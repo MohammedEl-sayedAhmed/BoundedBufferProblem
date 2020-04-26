@@ -1,0 +1,5 @@
+Steps
+
+1 - Compile with make
+2 - run ./producer.out first to initilaize memory creation and semaphores initilization
+3 - run ./consumer.out 

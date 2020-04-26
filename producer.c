@@ -14,18 +14,17 @@
 #include <sys/sem.h>
 
 #include <pthread.h>
-
-struct sharedMemory { 
-
-    char buff[100]; 
-    int clientpid, serverpid; 
-}; 
-
-struct sharedMemory* shmaddr; 
-
-#define N 100
+#include <semaphore.h>
 
 
+
+
+///////   /////////////  \\\\\\/
+///////   G L O B A L S  \\\\\\/
+///////   /////////////  \\\\\\/
+
+int prodIndexLoc = 0;
+int isExit = 0;
 
 
 
@@ -107,36 +106,101 @@ struct sembuf up(int sem)
 }
 
 
+int produceItem(int* ptrBuff, int buffLen){
 
+    printf("\nProducer tries to produce an item\n");
+
+    int count = 0;
+    for(int i = 0; i < buffLen; i++){
+        
+        if (ptrBuff[i] == -100){
+            count++;
+        }
+
+    }
+    return count;
+}
+
+void insertItem(int item,int* ptrBuff, int buffLen){
+
+    if (ptrBuff[prodIndexLoc == -100]){
+        ptrBuff[prodIndexLoc] = item;
+        printf("\nInserted item is %d\n",item);
+
+    }
+    
+
+    if ( prodIndexLoc < buffLen ){
+        prodIndexLoc++;
+    }
+    else{
+        prodIndexLoc = 0;
+    }
+
+}
+
+void exitHandler(int signum){
+    
+    isExit = 1;
+}
 
 int main(){
 
 
-    struct sharedMemory { 
-
-    char buff[100]; 
-    int clientpid, serverpid; 
-    }
-}
-
-struct sharedMemory* shmaddr; 
+    /// S I Z E I D E N TI FI C A T I O N -- S H A R E D M E M O R Y 
 
 
-    int size;
+
+    int LEN; // length of the buffer array - to be created
+    int size; // size of memory allocated
     printf("\nEnter the buffer size: ");
-    scanf("%d",&size);
-    int * myBuffer = (int *) malloc(sizeof(int));
+    scanf("%d",&LEN);
+    LEN--;
+    int* buff;
+    size = sizeof(int) * LEN;
 
+    // RATE of PRODUCTION
+    int rate;
+    printf("\nEnter the production rate: ");
+    scanf("%d",&rate);
+    
+    // Shared memory of size
+    int shmidCreation; // id of the shared memory for the size of the buffer
+    key_t keyCreation = 4000;
+
+    shmidCreation = shmget(keyCreation, sizeof(int), IPC_CREAT|0644);
+
+    if(shmidCreation == -1){
+        perror("Error in create");
+        exit(-1);
+    }
+
+    else{
+        printf("\nShared memory -- Producer size ID = %d\n", shmidCreation);
+    }
+
+    // Attach to space segment
+    int* shmaddrCreation = (int*) shmat(shmidCreation, (void *)0, 0);  
+
+      if(shmaddrCreation == -1)
+    {
+        perror("Error in attach in size creation");
+        exit(-1);
+    }
+    *shmaddrCreation = LEN;
+    // E N D 
+
+
+
+    
+             ////                                            ///////   
+             ////   B U F F E R  S H A R E D M E M O R Y     ///////                     
+             ////                                            ///////  
+    
     int shmid;
     key_t key = 5000;
 
-
-
-             ////                               ///////   
-             ////   S H A R E D M E M O R Y     ///////                     
-             ////                               ///////  
-
-    shmid = shmget(key, sizeof(myBuffer), IPC_CREAT|0644);
+    shmid = shmget(key, size, IPC_CREAT|0644);
 
     if(shmid == -1){
         perror("Error in create");
@@ -144,41 +208,59 @@ struct sharedMemory* shmaddr;
     }
 
     else{
-        printf("\nShared memory -- Server ID = %d\n", shmid);
+        printf("\nShared memory -- Producer ID = %d\n", shmid);
     }
     
-    
+   
     // attach the Server segment to our space
-    shmaddr = (struct sharedMemory*) shmat(shmid, (void *)0, 0);
-      if(shmaddr == -1)
+
+    buff = (int*) shmat(shmid, (void *)0, 0);
+      if(buff == -1)
     {
-        perror("Error in attach in reader");
+        perror("Error in attach in Producer");
         exit(-1);
     }
-    printf("\nShared memory -- Server attached at address %x\n", shmaddr);
-    
+    printf("\nShared memory -- Producer attached at address %x\n", buff);
 
-    pthread_mutex_t mutex;
 
-    // S E M A P H O R E S 
-    union Semun semun;
+    // buff initilization with -100 -- test condition
 
-    int full = create_sem(4000,0);
-    int empty = create_sem(4000,N);
-
-    struct sembuf DOWNSemapohre;
-    struct sembuf UPSemapohre;
-
-    while(1){
-
-        int item = produceItem();
-        down(empty);
-        pthread_mutex_lock(&mutex);
-        insertItem(item);
-        pthread_mutex_unlock(&mutex);
-        up(full);
+    for (int i =0; i < LEN; i++){
+        buff[i] = -100;
     }
 
+
+    // S E M A P H O R E S 
+
+    int full = create_sem(100,0);
+    int empty = create_sem(200,LEN);
+    int mutex = create_sem(300,1);
+
+    signal(SIGINT,exitHandler);
+
+    while(isExit == 0){
+        
+        sleep(1/rate);
+        int item = produceItem(buff,LEN);
+        down(empty);
+        down(mutex);
+        insertItem(item,buff,LEN);
+        up(mutex);       
+        up(full); 
+    }  
+    // detach producer
+    shmdt((void*)buff);
+    shmdt((void*)shmaddrCreation);
+
+    // clear resources
+    destroy_sem(full);
+    destroy_sem(empty);
+    destroy_sem(mutex);
+
+    shmctl(shmid, IPC_RMID, NULL);
+    shmctl(shmidCreation, IPC_RMID, NULL);
+    
+    exit(0);
 }
     
 
