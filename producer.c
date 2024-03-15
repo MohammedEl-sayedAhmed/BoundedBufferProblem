@@ -7,7 +7,6 @@
 #include <stdio.h>
 #include <ctype.h>
 
-
 #include <sys/stat.h>
 #include <sys/file.h>
 #include <sys/shm.h>
