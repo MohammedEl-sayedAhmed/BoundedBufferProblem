@@ -1,0 +1,13 @@
+# Compiled binaries
+/producer
+/consumer
+
+# Object files / build artifacts
+*.o
+*.out
+*.obj
+
+# Editor / OS cruft
+*.swp
+*~
+.DS_Store
